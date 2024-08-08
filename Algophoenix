@@ -1,0 +1,125 @@
+import time
+from cryptography.hazmat.primitives import padding as sym_padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.backends import default_backend
+
+def run_demo(public_key, private_key):
+
+    message = b"Cryptography is the ultimate form of non-violent direct action!"
+    padder = sym_padding.PKCS7(128).padder()
+    padded_message = padder.update(message) + padder.finalize()
+
+
+    start_encoding_time = time.time()
+
+
+    aes_key = b'256' * 32
+
+
+    encrypted_aes_key_rsa = public_key.encrypt(
+        aes_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    end_encoding_time = time.time()
+    encoding_time = end_encoding_time - start_encoding_time
+    print(f"Encoding (Key Exchange) Time: {encoding_time} seconds")
+
+
+    print(f"Encrypted AES Key using RSA: {encrypted_aes_key_rsa}")
+
+
+    start_decoding_time = time.time()
+
+
+    decrypted_aes_key_rsa = private_key.decrypt(
+        encrypted_aes_key_rsa,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    end_decoding_time = time.time()
+    decoding_time = end_decoding_time - start_decoding_time
+    print(f"Decoding (Key Decryption) Time: {decoding_time} seconds")
+
+
+    print(f"Decrypted AES Key using RSA: {decrypted_aes_key_rsa}")
+
+
+    print(f"Original Message: {message.decode('utf-8')}")
+
+
+    drone_signal_data = b"Get to New York To New Jersey"
+    padder_drone = sym_padding.PKCS7(128).padder()
+    padded_drone_data = padder_drone.update(drone_signal_data) + padder_drone.finalize()
+
+
+    print(f"Padded Drone Signal Data: {padded_drone_data}")
+
+
+    encrypted_drone_data_rsa = public_key.encrypt(
+        padded_drone_data,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+
+    print(f"Encrypted Drone Signal Data using RSA: {encrypted_drone_data_rsa}")
+
+
+private_key_demo = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+)
+
+public_key_demo = private_key_demo.public_key()
+
+
+run_demo(public_key_demo, private_key_demo)
+
+
+
+
+ Install the required module
+!pip install cryptography
+
+# Import the required modules
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+# Generate a new RSA key pair
+key_pair = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+)
+
+# Extract the public key
+public_key = key_pair.public_key()
+
+# Serialize the private key to PEM format
+private_key_bytes = key_pair.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption(),
+)
+
+# Deserialize the private key from PEM format
+private_key = serialization.load_pem_private_key(
+    private_key_bytes, None, default_backend()
+)
+
+# Run the demo with the generated key pair
+run_demo(public_key, private_key)
