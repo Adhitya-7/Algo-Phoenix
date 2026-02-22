@@ -1,0 +1,142 @@
+import os
+import time
+from cryptography.hazmat.primitives import padding as sym_padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
+
+# RSA_KEY_GEN (generate RSA keys + serialize)
+def generate_rsa_keys(key_size):
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=key_size,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
+
+    priv_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+
+    pub_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+    return private_key, public_key, priv_pem, pub_pem
+
+
+# AES_KEY_GEN (random AES key)
+def generate_aes_key():
+    return os.urandom(32)
+
+
+# AES_ENCRYPT (AES-CBC)
+def aes_encrypt(data, aes_key):
+    iv = os.urandom(16)
+    padder = sym_padding.PKCS7(128).padder()
+    padded = padder.update(data) + padder.finalize()
+
+    cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
+    enc = cipher.encryptor()
+    ciphertext = enc.update(padded) + enc.finalize()
+
+    return iv, ciphertext
+
+
+# AES_DECRYPT (AES-CBC)
+def aes_decrypt(iv, ciphertext, aes_key):
+    cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
+    dec = cipher.decryptor()
+    padded = dec.update(ciphertext) + dec.finalize()
+
+    unpad = sym_padding.PKCS7(128).unpadder()
+    data = unpad.update(padded) + unpad.finalize()
+
+    return data
+
+
+# RSA_ENCRYPT_KEY (RSA encrypt AES key)
+def rsa_encrypt_key(aes_key, public_key):
+    return public_key.encrypt(
+        aes_key,
+        asym_padding.OAEP(
+            mgf=asym_padding.MGF1(hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+
+# RSA_DECRYPT_KEY (RSA decrypt AES key)
+def rsa_decrypt_key(enc_key, private_key):
+    return private_key.decrypt(
+        enc_key,
+        asym_padding.OAEP(
+            mgf=asym_padding.MGF1(hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+
+# SAVE_KEYS (write keys to txt)
+def save_keys_to_file(priv_pem, pub_pem, filename="rsa_keys.txt"):
+    with open(filename, "wb") as f:
+        f.write(b"----- PRIVATE KEY -----\n")
+        f.write(priv_pem)
+        f.write(b"\n----- PUBLIC KEY -----\n")
+        f.write(pub_pem)
+
+
+# RUN_DYNAMIC DEMO (main function to run the demo)                                                  
+def run_dynamic_demo(message_str, drone_str, rsa_bits):
+
+    message = message_str.encode()
+    drone_signal = drone_str.encode()
+
+    private_key, public_key, priv_pem, pub_pem = generate_rsa_keys(rsa_bits)
+    aes_key = generate_aes_key()
+
+    save_keys_to_file(priv_pem, pub_pem)
+
+    print("\n=== GENERATED RSA KEYS ===")
+    print(priv_pem.decode())
+    print(pub_pem.decode())
+
+    start = time.time()
+    enc_aes_key = rsa_encrypt_key(aes_key, public_key)
+    enc_time = time.time() - start
+
+    iv_msg, enc_msg = aes_encrypt(message, aes_key)
+    iv_drone, enc_drone = aes_encrypt(drone_signal, aes_key)
+
+    start = time.time()
+    dec_aes_key = rsa_decrypt_key(enc_aes_key, private_key)
+    dec_time = time.time() - start
+
+    dec_msg = aes_decrypt(iv_msg, enc_msg, dec_aes_key)
+    dec_drone = aes_decrypt(iv_drone, enc_drone, dec_aes_key)
+
+    print("\n=== Dynamic Hybrid Crypto ===")
+    print(f"RSA bits: {rsa_bits}")
+    print(f"Encrypt time: {enc_time:.6f}s")
+    print(f"Decrypt time: {dec_time:.6f}s")
+
+    print(f"\nMessage: {dec_msg.decode()}")
+    print(f"Drone: {dec_drone.decode()}")
+
+    print("\nKeys saved to rsa_keys.txt")
+
+
+# MAIN_INPUT (get user input and run demo)
+if __name__ == "__main__":
+    msg = input("Enter message: ")
+    drone = input("Enter drone signal: ")
+    bits = int(input("Enter RSA key size (2048/3072/4096): "))
+
+    run_dynamic_demo(msg, drone, bits)
